@@ -5,9 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Карта саду | Потелич</title>
-
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-
   <style>
     * {
       box-sizing: border-box;
@@ -28,33 +26,43 @@
       background: #222;
     }
 
-    /* Панель калібрування зміщення */
-    .calib-panel {
+    /* Панель керування */
+    .control-panel {
       position: absolute;
       bottom: 20px;
       left: 20px;
       z-index: 1000;
-      background: rgba(20, 25, 30, 0.9);
+      background: rgba(20, 25, 30, 0.92);
       color: #fff;
-      padding: 12px 16px;
+      padding: 14px 18px;
       border-radius: 8px;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
       font-size: 13px;
+      max-width: 320px;
     }
 
-    .calib-btn {
+    .panel-btn {
       background: #2e7d32;
       color: #fff;
       border: none;
-      padding: 5px 10px;
-      margin: 2px;
+      padding: 6px 10px;
+      margin: 3px 2px;
       border-radius: 4px;
       cursor: pointer;
-      font-weight: bold;
+      font-weight: 600;
+      font-size: 12px;
     }
 
-    .calib-btn:hover {
+    .panel-btn:hover {
       background: #388e3c;
+    }
+
+    .panel-btn.alt {
+      background: #1976d2;
+    }
+
+    .panel-btn.alt:hover {
+      background: #1e88e5;
     }
 
     /* Легенда */
@@ -68,7 +76,7 @@
       border-radius: 8px;
       box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
       font-size: 13px;
-      max-width: 250px;
+      min-width: 220px;
     }
 
     .status-row {
@@ -85,7 +93,7 @@
       border: 1.5px solid #fff;
     }
 
-    /* Маркери рослин */
+    /* Маркери дерев */
     .tree-icon {
       display: flex;
       align-items: center;
@@ -103,6 +111,24 @@
     .tree-icon:hover {
       transform: scale(1.4);
       z-index: 1000 !important;
+    }
+
+    /* Прапорці стартових точок */
+    .origin-pin {
+      background: #ffeb3b;
+      border: 2px solid #d32f2f;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-weight: bold;
+      font-size: 11px;
+      color: #000;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+      white-space: nowrap;
+      cursor: grab;
+    }
+
+    .origin-pin:active {
+      cursor: grabbing;
     }
 
     .popup-box {
@@ -132,27 +158,22 @@
 
   <div id="map"></div>
 
-  <!-- Панель точного регулювання зміщення ділянки -->
-  <div class="calib-panel">
-    <div style="font-weight: bold; margin-bottom: 6px;">🧭 Зсув ділянки (метрів):</div>
-    <div style="display: flex; justify-content: center; margin-bottom: 4px;">
-      <button class="calib-btn" onclick="shiftPolygon(0, 2)">▲ +2м Пн</button>
-      <button class="calib-btn" onclick="shiftPolygon(0, 10)">▲ +10м</button>
+  <!-- Панель налаштування -->
+  <div class="control-panel">
+    <div style="font-weight: bold; margin-bottom: 6px;">🎯 Налаштування рядів</div>
+    <div style="color: #bbb; font-size: 11px; margin-bottom: 8px;">
+      Перетягуйте жовті прапорці <b>«🚩 Старт»</b> мишкою на карті для точної посадки.
     </div>
-    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-      <button class="calib-btn" onclick="shiftPolygon(-2, 0)">◄ -2м Зх</button>
-      <button class="calib-btn" onclick="shiftPolygon(2, 0)">+2м Сх ►</button>
-      <button class="calib-btn" onclick="shiftPolygon(10, 0)">+10м ►</button>
+
+    <div style="margin-bottom: 6px;">
+      <button class="panel-btn alt" onclick="toggleMainRowDirection()">Інверсія рядів Main ↕</button>
+      <button class="panel-btn alt" onclick="toggleHouseRowDirection()">Інверсія рядів House ↕</button>
     </div>
-    <div style="display: flex; justify-content: center; margin-bottom: 6px;">
-      <button class="calib-btn" onclick="shiftPolygon(0, -2)">▼ -2м Пд</button>
-    </div>
-    <div id="shiftStatus" style="font-size: 11px; color: #a5d6a7;">Зсув: Пн 0м, Сх 0м</div>
 
     <hr style="margin: 8px 0; border: 0.5px solid #444;" />
-    <label style="font-size: 11px; display: block; margin-bottom: 4px;">Файл trees.csv не завантажився? Виберіть
-      вручну:</label>
+    <label style="font-size: 11px; display: block; margin-bottom: 4px;">Завантажити інший CSV:</label>
     <input type="file" id="csvFileInput" accept=".csv" style="font-size: 11px; color: #ccc;" />
+    <div id="coordsDebug" style="font-size: 10px; color: #aaa; margin-top: 6px;"></div>
   </div>
 
   <div class="legend-panel">
@@ -162,21 +183,19 @@
     <div class="status-row"><span class="status-dot" style="background:#1976d2;"></span> Посаджено</div>
     <div class="status-row"><span class="status-dot" style="background:#f57c00;"></span> Сумнівно</div>
     <div class="status-row"><span class="status-dot" style="background:#d32f2f;"></span> Засохло</div>
-    <div id="treeCount" style="margin-top: 6px; font-size: 11px; color: #666;">Завантаження списку...</div>
+    <div id="treeCount" style="margin-top: 6px; font-size: 11px; color: #666;">Завантаження...</div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
   <script>
-    // 1. Ініціалізація
     const map = L.map('map', {
       center: [50.1761, 23.5526],
       zoom: 18,
       maxZoom: 22
     });
 
-    // Підкладка Google Супутник (з гібридними написами без обмежень зуму)
     const googleSat = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
       maxZoom: 22,
       subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
@@ -188,7 +207,7 @@
       attribution: '&copy; OpenStreetMap'
     });
 
-    // 2. Межі ділянки
+    // Контур ділянки
     const rawCoords = [
       [23.552623007, 50.175859531],
       [23.552169358, 50.176035001],
@@ -203,55 +222,75 @@
       [23.552623007, 50.175859531]
     ];
 
+    const parcelPolygon = L.polygon(rawCoords.map(p => [p[1], p[0]]), {
+      color: "#ffffff",
+      weight: 2,
+      dashArray: "4, 4",
+      fillColor: "#4caf50",
+      fillOpacity: 0.05
+    }).addTo(map);
+
+    // Базові точки (поміняні місцями відповідно до аналізу ділянки)
+    let originMain = { lat: 50.175792, lon: 23.554144 };   // Східний кут поля
+    let originHouse = { lat: 50.175940, lon: 23.553121 };  // Кут біля хати
+
+    let mainDirInvert = 1;   // 1 або -1 для зміни напрямку росту рядів
+    let houseDirInvert = 1;
+
     const M_TO_LAT = 0.00000899;
     const M_TO_LON = 0.00001402;
-
-    let offsetEastM = 0;
-    let offsetNorthM = 0;
-    let parcelPolygon = null;
-
-    function renderPolygon() {
-      if (parcelPolygon) map.removeLayer(parcelPolygon);
-
-      const shifted = rawCoords.map(pt => {
-        const lon = pt[0] + (offsetEastM * M_TO_LON);
-        const lat = pt[1] + (offsetNorthM * M_TO_LAT);
-        return [lat, lon];
-      });
-
-      parcelPolygon = L.polygon(shifted, {
-        color: "#ffffff",
-        weight: 2,
-        dashArray: "4, 4",
-        fillColor: "#4caf50",
-        fillOpacity: 0.08
-      }).addTo(map);
-    }
-    renderPolygon();
-
-    // Функція зсуву з кнопок
-    window.shiftPolygon = function (dEast, dNorth) {
-      offsetEastM += dEast;
-      offsetNorthM += dNorth;
-      document.getElementById('shiftStatus').innerText =
-        `Зсув: Пн ${offsetNorthM >= 0 ? '+' : ''}${offsetNorthM}м, Сх ${offsetEastM >= 0 ? '+' : ''}${offsetEastM}м`;
-      renderPolygon();
-      renderAllTrees(); // перемальовуємо дерева разом із контуром
-    };
-
-    // 3. Точки відліку насаджень
-    const BASE_ORIGINS = {
-      house: { lat: 50.175792, lon: 23.554144 },
-      main: { lat: 50.176099, lon: 23.553156 }
-    };
-
     const COS_BEARING = 0.978;
     const SIN_BEARING = 0.207;
     const ROW_SPACING_M = 3.5;
 
+    // Перетяжні маркери точок відліку
+    const mainMarker = L.marker([originMain.lat, originMain.lon], {
+      draggable: true,
+      icon: L.divIcon({ className: '', html: '<div class="origin-pin">🚩 Старт Main</div>', iconSize: [80, 20] })
+    }).addTo(map);
+
+    const houseMarker = L.marker([originHouse.lat, originHouse.lon], {
+      draggable: true,
+      icon: L.divIcon({ className: '', html: '<div class="origin-pin">🏠 Старт Хата</div>', iconSize: [80, 20] })
+    }).addTo(map);
+
+    function updateDebugInfo() {
+      document.getElementById('coordsDebug').innerHTML =
+        `Main: ${originMain.lat.toFixed(6)}, ${originMain.lon.toFixed(6)}<br>` +
+        `Хата: ${originHouse.lat.toFixed(6)}, ${originHouse.lon.toFixed(6)}`;
+    }
+    updateDebugInfo();
+
+    mainMarker.on('drag', function (e) {
+      const pos = e.target.getLatLng();
+      originMain.lat = pos.lat;
+      originMain.lon = pos.lon;
+      updateDebugInfo();
+      renderAllTrees();
+    });
+
+    houseMarker.on('drag', function (e) {
+      const pos = e.target.getLatLng();
+      originHouse.lat = pos.lat;
+      originHouse.lon = pos.lon;
+      updateDebugInfo();
+      renderAllTrees();
+    });
+
+    window.toggleMainRowDirection = function () {
+      mainDirInvert *= -1;
+      renderAllTrees();
+    };
+
+    window.toggleHouseRowDirection = function () {
+      houseDirInvert *= -1;
+      renderAllTrees();
+    };
+
     function calculateTreeCoords(plot, row, dist) {
       const isHouse = (plot === 'house');
-      const base = isHouse ? BASE_ORIGINS.house : BASE_ORIGINS.main;
+      const base = isHouse ? originHouse : originMain;
+      const invert = isHouse ? houseDirInvert : mainDirInvert;
       let rowOffsetMeters = 0;
 
       if (isHouse) {
@@ -274,9 +313,9 @@
         rowOffsetMeters = (rNum - 1) * ROW_SPACING_M;
       }
 
-      // Зміщення з урахуванням загального калібрувального зсуву
-      const dNorth = (rowOffsetMeters * COS_BEARING) + (dist * SIN_BEARING) + offsetNorthM;
-      const dWest = (dist * COS_BEARING) - (rowOffsetMeters * SIN_BEARING) - offsetEastM;
+      // Напрямок рядів з урахуванням інверсії
+      const dNorth = (rowOffsetMeters * invert * COS_BEARING) + (dist * SIN_BEARING);
+      const dWest = (dist * COS_BEARING) - (rowOffsetMeters * invert * SIN_BEARING);
 
       const lat = base.lat + (dNorth * M_TO_LAT);
       const lon = base.lon - (dWest * M_TO_LON);
@@ -284,7 +323,6 @@
       return [lat, lon];
     }
 
-    // 4. Рендеринг насаджень
     const mainGroup = L.layerGroup().addTo(map);
     const houseGroup = L.layerGroup().addTo(map);
     let loadedTreesData = [];
@@ -340,35 +378,27 @@
       renderAllTrees();
     }
 
-    // Автоматичне завантаження trees.csv
+    // Спроба автоматичного завантаження CSV з репозиторію
     Papa.parse('trees.csv', {
       download: true,
       header: true,
       skipEmptyLines: true,
       complete: function (res) {
-        if (res.data && res.data.length > 0) {
-          processParsedData(res.data);
-        }
-      },
-      error: function () {
-        document.getElementById('treeCount').innerText = 'Не вдалося автозавантажити CSV. Виберіть файл внизу.';
+        if (res.data && res.data.length > 0) processParsedData(res.data);
       }
     });
 
-    // Ручний вибір файлу (працює завжди, навіть локально на комп'ютері)
+    // Ручний вибір файлу
     document.getElementById('csvFileInput').addEventListener('change', function (e) {
       const file = e.target.files[0];
       if (!file) return;
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
-        complete: function (res) {
-          processParsedData(res.data);
-        }
+        complete: function (res) { processParsedData(res.data); }
       });
     });
 
-    // Меню шарів
     L.control.layers({ "Google Супутник": googleSat, "OpenStreetMap": osm }, {
       "Основний сад": mainGroup,
       "Біля хати": houseGroup
