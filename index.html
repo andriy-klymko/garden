@@ -87,7 +87,19 @@
       z-index: 1000 !important;
     }
 
-    /* Спливаючий блок інформації (Popup) */
+    /* Яскраві відправні точки */
+    .origin-flag {
+      background: #ffeb3b;
+      color: #000;
+      font-weight: 800;
+      font-size: 12px;
+      padding: 4px 8px;
+      border: 2px solid #d32f2f;
+      border-radius: 6px;
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6);
+      white-space: nowrap;
+    }
+
     .popup-box {
       font-size: 13px;
       min-width: 200px;
@@ -140,7 +152,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
   <script>
-    // 1. Ініціалізація карти
+    // 1. Карта
     const map = L.map('map', {
       center: [50.1761, 23.5526],
       zoom: 18,
@@ -158,7 +170,7 @@
       attribution: '&copy; OpenStreetMap'
     });
 
-    // 2. Межі кадастрової ділянки
+    // 2. Межі ділянки
     const rawCoords = [
       [23.552623007, 50.175859531],
       [23.552169358, 50.176035001],
@@ -181,16 +193,35 @@
       fillOpacity: 0.05
     }).addTo(map);
 
-    // 3. Базові точки прив'язки
+    // 3. Відправні точки
     const ORIGINS = {
       house: { lat: 50.175792, lon: 23.554144 },
       main: { lat: 50.176099, lon: 23.553156 }
     };
 
+    // Додаємо візуальні маркери відправних точок
+    L.marker([ORIGINS.main.lat, ORIGINS.main.lon], {
+      icon: L.divIcon({
+        className: '',
+        html: '<div class="origin-flag">🚩 СТАРТ MAIN (0,0)</div>',
+        iconSize: [120, 24],
+        iconAnchor: [60, 12]
+      })
+    }).addTo(map).bindPopup("<b>Точка відліку Main:</b> 50.176099, 23.553156");
+
+    L.marker([ORIGINS.house.lat, ORIGINS.house.lon], {
+      icon: L.divIcon({
+        className: '',
+        html: '<div class="origin-flag">🏠 СТАРТ ХАТА (0,0)</div>',
+        iconSize: [120, 24],
+        iconAnchor: [60, 12]
+      })
+    }).addTo(map).bindPopup("<b>Точка відліку Хата:</b> 50.175792, 23.554144");
+
     const M_TO_LAT = 0.00000899;
     const M_TO_LON = 0.00001402;
 
-    // Сховище конфігурації рядів
+    // Конфігурація рядів із rows.csv
     const rowsConfig = {};
 
     function normalizeRowId(rowStr) {
@@ -207,6 +238,13 @@
       return s;
     }
 
+    // 4. Математика: dist вздовж довгої осі саду, offset впоперек
+    // Орієнтація межі ділянки від SE до NW: кут ~ 160° від сходу проти годинникової стрілки (або -20° від осі Захід)
+    const AXIS_ANGLE_DEG = 19.5; // точний кут нахилу межі ділянки
+    const rad = (AXIS_ANGLE_DEG * Math.PI) / 180;
+    const cosA = Math.cos(rad);
+    const sinA = Math.sin(rad);
+
     function calculateTreeCoords(plot, row, dist) {
       const isHouse = (plot.toLowerCase() === 'house');
       const base = isHouse ? ORIGINS.house : ORIGINS.main;
@@ -214,15 +252,11 @@
       const cleanRow = normalizeRowId(row);
       const key = `${plot.toLowerCase()}_${cleanRow}`;
 
-      const conf = rowsConfig[key] || { offset_m: 0.0, bearing_deg: 160.5 };
+      const conf = rowsConfig[key] || { offset_m: 0.0 };
       const rowOffset = conf.offset_m;
-      const bearing = conf.bearing_deg;
 
-      const rad = (bearing * Math.PI) / 180;
-      const cosA = Math.cos(rad);
-      const sinA = Math.sin(rad);
-
-      // dist вздовж ряду, rowOffset зміщує ряди вглиб ділянки
+      // Рух вздовж ділянки: на північний захід (зменшуємо довготу -East, збільшуємо широту +North)
+      // Зсув рядів у глибину поля (перпендикулярно осі: на північний схід +North, +East)
       const dNorth = (dist * sinA) + (rowOffset * cosA);
       const dEast = -(dist * cosA) + (rowOffset * sinA);
 
@@ -232,7 +266,7 @@
       return [lat, lon];
     }
 
-    // 4. Маркери рослин
+    // 5. Маркери рослин
     const mainGroup = L.layerGroup().addTo(map);
     const houseGroup = L.layerGroup().addTo(map);
 
@@ -286,11 +320,11 @@
       }
     }
 
-    // 5. Завантаження даних
+    // 6. Завантаження даних
     async function initGarden() {
       const statusEl = document.getElementById('loadStatus');
       try {
-        // Завантаження rows.csv
+        // Читаємо rows.csv
         const rowsRes = await fetch('./Data/rows.csv?t=' + Date.now());
         if (rowsRes.ok) {
           const rowsText = await rowsRes.text();
@@ -300,14 +334,13 @@
               const cleanRow = normalizeRowId(r.row_id);
               const key = `${r.plot.trim().toLowerCase()}_${cleanRow}`;
               rowsConfig[key] = {
-                offset_m: parseFloat(r.offset_m) || 0.0,
-                bearing_deg: parseFloat(r.bearing_deg) || 160.5
+                offset_m: parseFloat(r.offset_m) || 0.0
               };
             }
           });
         }
 
-        // Завантаження trees.csv
+        // Читаємо trees.csv
         const treesRes = await fetch('./Data/trees.csv?t=' + Date.now());
         if (!treesRes.ok) throw new Error('Не знайдено Data/trees.csv');
         const treesText = await treesRes.text();
@@ -326,7 +359,7 @@
 
     initGarden();
 
-    // 6. Контрол вибору шарів
+    // 7. Шари
     L.control.layers({ "Google Супутник": googleSat, "OpenStreetMap": osm }, {
       "Основний сад (Main)": mainGroup,
       "Біля хати (House)": houseGroup
