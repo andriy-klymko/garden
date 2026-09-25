@@ -184,32 +184,38 @@
 
     // 3. Зафіксовані опорні точки
     const ORIGINS = {
-      house: { lat: 50.175792, lon: 23.554144 },
-      main: { lat: 50.176099, lon: 23.553156 }
+      house: { lat: 50.175792, lon: 23.554144 }, // Південний схід зони біля хати
+      main: { lat: 50.176099, lon: 23.553156 }  // Південний схід ділянки Main
     };
 
     const M_TO_LAT = 0.00000899;
     const M_TO_LON = 0.00001402;
-    const COS_BEARING = 0.978;
-    const SIN_BEARING = 0.207;
-    const ROW_SPACING_M = 3.5;
+
+    // Кут орієнтації рядів на північний схід уздовж осі ділянки
+    const ROW_ANGLE_DEG = 26.0;
+    const ROW_SPACING_M = 3.5;  // крок між рядами в метрах
+
+    const rad = (ROW_ANGLE_DEG * Math.PI) / 180;
+    const COS_A = Math.cos(rad);
+    const SIN_A = Math.sin(rad);
 
     // 4. Розрахунок позиції рослини
     function calculateTreeCoords(plot, row, dist) {
       const isHouse = (plot === 'house');
       const base = isHouse ? ORIGINS.house : ORIGINS.main;
-      let rowOffsetMeters = 0;
+      let rowOffset = 0;
 
       if (isHouse) {
-        if (row === '1' || row === 'H-R1') rowOffsetMeters = 0.0;
-        else if (row === '2' || row === 'H-R2') rowOffsetMeters = 3.5;
-        else if (row === 'перед городом' || row === 'H-G') rowOffsetMeters = 7.0;
-        else if (row === 'біля хати' || row === 'H-H') rowOffsetMeters = 11.5;
+        if (row === '1' || row === 'H-R1') rowOffset = 0.0;
+        else if (row === '2' || row === 'H-R2') rowOffset = 3.5;
+        else if (row === 'перед городом' || row === 'H-G') rowOffset = 7.0;
+        else if (row === 'біля хати' || row === 'H-H') rowOffset = 11.5;
         else {
           const match = String(row).match(/\d+/);
-          rowOffsetMeters = match ? (parseInt(match[0]) - 1) * ROW_SPACING_M : 0;
+          rowOffset = match ? (parseInt(match[0]) - 1) * ROW_SPACING_M : 0;
         }
       } else {
+        // Ділянка Main: ряди 1..7
         let rNum = 1;
         if (typeof row === 'string') {
           const match = row.match(/\d+/);
@@ -217,15 +223,16 @@
         } else {
           rNum = parseInt(row) || 1;
         }
-        rowOffsetMeters = (rNum - 1) * ROW_SPACING_M;
+        rowOffset = (rNum - 1) * ROW_SPACING_M;
       }
 
-      // Відкладання метрів: дистанція на захід (-lon), ряди всередину ділянки
-      const dNorth = -(rowOffsetMeters * COS_BEARING) + (dist * SIN_BEARING);
-      const dWest = (dist * COS_BEARING) + (rowOffsetMeters * SIN_BEARING);
+      // Напрямок: dist відкладається на північний схід (+lat, +lon),
+      // а rowOffset зміщує ряди всередину ділянки
+      const dNorth = (dist * SIN_A) - (rowOffset * COS_A);
+      const dEast = (dist * COS_A) + (rowOffset * SIN_A);
 
       const lat = base.lat + (dNorth * M_TO_LAT);
-      const lon = base.lon - (dWest * M_TO_LON);
+      const lon = base.lon + (dEast * M_TO_LON);
 
       return [lat, lon];
     }
@@ -284,7 +291,7 @@
       }
     }
 
-    // 6. Завантаження даних прямо з папки Data/trees.csv
+    // 6. Завантаження даних із папки Data/trees.csv
     async function loadTreeData() {
       const statusEl = document.getElementById('loadStatus');
 
@@ -304,7 +311,7 @@
             break;
           }
         } catch (e) {
-          // пробуємо наступний варіант
+          // пробуємо наступний шлях
         }
       }
 
