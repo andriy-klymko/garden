@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="uk">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Інтерактивна карта саду | Потелич</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html,
+    body {
+      height: 100%;
+      width: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    #map {
+      height: 100vh;
+      width: 100vw;
+      background: #e0e0e0;
+    }
+
+    /* Легенда */
+    .legend-panel {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(4px);
+      padding: 12px 16px;
+      border-radius: 8px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .legend-title {
+      font-weight: bold;
+      margin-bottom: 6px;
+      font-size: 14px;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 4px;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 1.5px solid #fff;
+      box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Іконки насаджень */
+    .tree-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      border: 2px solid #ffffff;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+      color: #fff;
+      font-size: 11px;
+      font-weight: bold;
+      transition: transform 0.15s ease-out;
+      cursor: pointer;
+    }
+
+    .tree-icon:hover {
+      transform: scale(1.35);
+      z-index: 1000 !important;
+    }
+
+    /* Попап */
+    .popup-box {
+      font-size: 13px;
+      min-width: 190px;
+    }
+
+    .popup-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1b5e20;
+      margin-bottom: 4px;
+    }
+
+    .popup-field {
+      margin-bottom: 2px;
+    }
+
+    .popup-field span {
+      color: #666;
+    }
+
+    .popup-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="map"></div>
+
+  <div class="legend-panel">
+    <div class="legend-title">Стан насаджень</div>
+    <div class="status-row"><span class="status-dot" style="background:#2e7d32;"></span> Прижилося</div>
+    <div class="status-row"><span class="status-dot" style="background:#1976d2;"></span> Посаджено</div>
+    <div class="status-row"><span class="status-dot" style="background:#f57c00;"></span> Сумнівно</div>
+    <div class="status-row"><span class="status-dot" style="background:#d32f2f;"></span> Засохло</div>
+  </div>
+
+  <!-- Підключення бібліотек -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      // Запобігання помилці пошуку src за замовчуванням у Leaflet
+      delete L.Icon.Default.prototype._getIconUrl;
+      L.Icon.Default.mergeOptions({
+        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png'
+      });
+
+      // 1. Ініціалізація карти
+      const map = L.map('map', {
+        center: [50.1761, 23.5525],
+        zoom: 18,
+        maxZoom: 21
+      });
+
+      // Примусове оновлення розмірів контейнера карти
+      setTimeout(() => { map.invalidateSize(); }, 250);
+
+      // 2. Шари карти
+      const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Esri World Imagery',
+        maxZoom: 20
+      }).addTo(map);
+
+      const osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19
+      });
+
+      // 3. Кадастровий контур
+      const parcelGeoJson = {
+        "type": "FeatureCollection",
+        "features": [{
+          "type": "Feature",
+          "geometry": {
+            "type": "MultiPolygon",
+            "coordinates": [[[[23.552623007, 50.175859531], [23.552169358, 50.176035001], [23.551742658, 50.175922815], [23.550862309, 50.176250741], [23.551428248, 50.176687972], [23.554073786, 50.175770358], [23.553974972, 50.175655295], [23.553579713, 50.175799124], [23.553121572, 50.175940075], [23.552991316, 50.175753099], [23.552623007, 50.175859531]]]]
+          }
+        }]
+      };
+
+      const parcelLayer = L.geoJSON(parcelGeoJson, {
+        style: { color: "#ffffff", weight: 2, fillOpacity: 0.05, dashArray: "3, 3" }
+      }).addTo(map);
+
+      map.fitBounds(parcelLayer.getBounds());
+
+      // 4. Групи шарів
+      const mainGroup = L.layerGroup().addTo(map);
+      const houseGroup = L.layerGroup().addTo(map);
+
+      const statusConfig = {
+        'прижилося': { color: '#2e7d32', label: 'Прижилося' },
+        'посаджено': { color: '#1976d2', label: 'Посаджено' },
+        'сумнівно': { color: '#f57c00', label: 'Сумнівно' },
+        'засохло': { color: '#d32f2f', label: 'Засохло' }
+      };
+
+      // 5. Розрахунок координат
+      const ORIGINS = {
+        house: { lat: 50.175792, lon: 23.554144 },
+        main: { lat: 50.176099, lon: 23.553156 }
+      };
+
+      const METERS_TO_LAT = 0.00000899;
+      const METERS_TO_LON = 0.00001402;
+      const COS_BEARING = 0.978;
+      const SIN_BEARING = 0.207;
+      const ROW_SPACING_M = 3.5;
+
+      function calculateTreeCoords(plot, row, dist) {
+        const isHouse = (plot === 'house');
+        const base = isHouse ? ORIGINS.house : ORIGINS.main;
+        let rowOffsetMeters = 0;
+
+        if (isHouse) {
+          if (row === '1' || row === 'H-R1') rowOffsetMeters = 0.0;
+          else if (row === '2' || row === 'H-R2') rowOffsetMeters = 3.5;
+          else if (row === 'перед городом' || row === 'H-G') rowOffsetMeters = 7.0;
+          else if (row === 'біля хати' || row === 'H-H') rowOffsetMeters = 11.5;
+          else {
+            const match = String(row).match(/\d+/);
+            rowOffsetMeters = match ? (parseInt(match[0]) - 1) * ROW_SPACING_M : 0;
+          }
+        } else {
+          let rNum = 1;
+          if (typeof row === 'string') {
+            const match = row.match(/\d+/);
+            rNum = match ? parseInt(match[0]) : 1;
+          } else {
+            rNum = parseInt(row) || 1;
+          }
+          rowOffsetMeters = (rNum - 1) * ROW_SPACING_M;
+        }
+
+        const dNorth = (rowOffsetMeters * COS_BEARING) + (dist * SIN_BEARING);
+        const dWest = (dist * COS_BEARING) - (rowOffsetMeters * SIN_BEARING);
+
+        const lat = base.lat + (dNorth * METERS_TO_LAT);
+        const lon = base.lon - (dWest * METERS_TO_LON);
+
+        return [lat, lon];
+      }
+
+      function addTreeMarker(item) {
+        const dist = parseFloat(item.distance_m);
+        if (isNaN(dist)) return;
+
+        const coords = calculateTreeCoords(item.plot, item.row, dist);
+        const cfg = statusConfig[item.status] || { color: '#757575', label: item.status || 'Невідомо' };
+
+        const isBush = ['Малина', 'Смородина', 'Аґрус', 'Жимолость'].some(c => (item.crop || '').includes(c));
+        const iconSymbol = isBush ? '🫐' : '🌳';
+        const markerSize = isBush ? 18 : 22;
+
+        const treeIcon = L.divIcon({
+          className: 'tree-marker-div',
+          html: `<div class="tree-icon" style="background:${cfg.color}; width:${markerSize}px; height:${markerSize}px;">${iconSymbol}</div>`,
+          iconSize: [markerSize, markerSize],
+          iconAnchor: [markerSize / 2, markerSize / 2]
+        });
+
+        const marker = L.marker(coords, { icon: treeIcon });
+
+        const popupContent = `
+          <div class="popup-box">
+            <div class="popup-title">${item.crop || ''} ${item.variety ? `"${item.variety}"` : ''}</div>
+            <div class="popup-field"><span>ID:</span> <b>${item.tree_id || ''}</b></div>
+            <div class="popup-field"><span>Ділянка / Ряд:</span> ${(item.plot || '').toUpperCase()}, Ряд ${item.row || ''}</div>
+            <div class="popup-field"><span>Позиція в ряду:</span> <b>${item.distance_m || 0} м</b></div>
+            ${item.rootstock ? `<div class="popup-field"><span>Підщепа:</span> ${item.rootstock}</div>` : ''}
+            ${item.planted_year ? `<div class="popup-field"><span>Рік:</span> ${item.planted_year}</div>` : ''}
+            ${item.notes ? `<div class="popup-field"><span>Нотатка:</span> ${item.notes}</div>` : ''}
+            <div><span class="popup-badge" style="background:${cfg.color}22; color:${cfg.color};">${cfg.label}</span></div>
+          </div>
+        `;
+
+        marker.bindPopup(popupContent);
+        marker.bindTooltip(`${item.crop || ''} (${item.distance_m}м)`, { direction: 'top', offset: [0, -10] });
+
+        if (item.plot === 'house') {
+          houseGroup.addLayer(marker);
+        } else {
+          mainGroup.addLayer(marker);
+        }
+      }
+
+      // 6. Завантаження CSV із явною обробкою помилок
+      Papa.parse('./trees.csv', {
+        download: true,
+        header: true,
+        skipEmptyLines: true,
+        complete: function (res) {
+          if (res.data && res.data.length > 0) {
+            console.log(`Успішно завантажено насаджень: ${res.data.length}`);
+            res.data.forEach(row => {
+              if (row.tree_id && row.crop) {
+                addTreeMarker(row);
+              }
+            });
+          } else {
+            console.warn('CSV файл завантажено, але він порожній або некоректний.');
+          }
+        },
+        error: function (err) {
+          console.error('Помилка завантаження trees.csv:', err);
+        }
+      });
+
+      // 7. Контрол вибору шарів
+      const baseMaps = {
+        "Супутник": satelliteLayer,
+        "Схема вулиць": osmLayer
+      };
+
+      const overlayMaps = {
+        "Межі ділянки": parcelLayer,
+        "Основний сад (Main)": mainGroup,
+        "Біля хати (House)": houseGroup
+      };
+
+      L.control.layers(baseMaps, overlayMaps, { position: 'topleft', collapsed: false }).addTo(map);
+    });
+  </script>
+</body>
+
+</html>
