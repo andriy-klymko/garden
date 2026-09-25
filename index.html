@@ -244,19 +244,17 @@
       const cleanRow = normalizeRowId(row);
       const key = `${plot.toLowerCase()}_${cleanRow}`;
 
-      // Беремо параметри суворо з rows.csv
       const conf = rowsConfig[key] || { offset_m: 0.0, bearing_deg: 298.0 };
       const rowOffset = conf.offset_m;
       const bearing = conf.bearing_deg;
 
-      // Переведення навігаційного азимута (0° = Північ, за годинниковою) в радіани
+      // Радіани азимута ряду (вздовж ділянки на північний захід)
       const radBearing = (bearing * Math.PI) / 180;
-      // Вектор dist (вздовж ряду):
       const dNorth_dist = dist * Math.cos(radBearing);
       const dEast_dist = dist * Math.sin(radBearing);
 
-      // Вектор rowOffset (перпендикулярно вправо / вглиб поля: +90°):
-      const radPerp = ((bearing + 90) * Math.PI) / 180;
+      // Вектор зміщення міжрядь: повертаємо на -90° (вгору і праворуч углиб галявини)
+      const radPerp = ((bearing - 90) * Math.PI) / 180;
       const dNorth_offset = rowOffset * Math.cos(radPerp);
       const dEast_offset = rowOffset * Math.sin(radPerp);
 
@@ -268,7 +266,6 @@
 
       return [lat, lon];
     }
-
     // 5. Маркери рослин
     const mainGroup = L.layerGroup().addTo(map);
     const houseGroup = L.layerGroup().addTo(map);
