@@ -87,19 +87,6 @@
       z-index: 1000 !important;
     }
 
-    /* Прапорці відправних точок */
-    .origin-flag {
-      background: #ffeb3b;
-      color: #000;
-      font-weight: 800;
-      font-size: 12px;
-      padding: 4px 8px;
-      border: 2px solid #d32f2f;
-      border-radius: 6px;
-      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6);
-      white-space: nowrap;
-    }
-
     .popup-box {
       font-size: 13px;
       min-width: 200px;
@@ -152,7 +139,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
   <script>
-    // 1. Карта
+    // 1. Ініціалізація карти
     const map = L.map('map', {
       center: [50.1761, 23.5526],
       zoom: 18,
@@ -170,7 +157,7 @@
       attribution: '&copy; OpenStreetMap'
     });
 
-    // 2. Межі ділянки
+    // 2. Межі кадастрової ділянки
     const rawCoords = [
       [23.552623007, 50.175859531],
       [23.552169358, 50.176035001],
@@ -193,29 +180,11 @@
       fillOpacity: 0.05
     }).addTo(map);
 
-    // 3. Відправні точки
+    // 3. Відправні точки (без створення маркерів на карті)
     const ORIGINS = {
       house: { lat: 50.175792, lon: 23.554144 },
       main: { lat: 50.175869, lon: 23.552856 }
     };
-
-    L.marker([ORIGINS.main.lat, ORIGINS.main.lon], {
-      icon: L.divIcon({
-        className: '',
-        html: '<div class="origin-flag">🚩 СТАРТ MAIN (0,0)</div>',
-        iconSize: [120, 24],
-        iconAnchor: [60, 12]
-      })
-    }).addTo(map).bindPopup("<b>Точка Main:</b> 50.175978, 23.553016");
-
-    L.marker([ORIGINS.house.lat, ORIGINS.house.lon], {
-      icon: L.divIcon({
-        className: '',
-        html: '<div class="origin-flag">🏠 СТАРТ ХАТА (0,0)</div>',
-        iconSize: [120, 24],
-        iconAnchor: [60, 12]
-      })
-    }).addTo(map).bindPopup("<b>Точка Хата:</b> 50.175792, 23.554144");
 
     const M_TO_LAT = 0.00000899;
     const M_TO_LON = 0.00001402;
@@ -236,7 +205,7 @@
       return s;
     }
 
-    // 4. Розрахунок позиції рослини з урахуванням компасного азимута bearing_deg
+    // 4. Розрахунок позиції рослини
     function calculateTreeCoords(plot, row, dist) {
       const isHouse = (plot.toLowerCase() === 'house');
       const base = isHouse ? ORIGINS.house : ORIGINS.main;
@@ -244,22 +213,20 @@
       const cleanRow = normalizeRowId(row);
       const key = `${plot.toLowerCase()}_${cleanRow}`;
 
-      // Беремо параметри суворо з rows.csv
       const conf = rowsConfig[key] || { offset_m: 0.0, bearing_deg: 298.0 };
       const rowOffset = conf.offset_m;
       const bearing = conf.bearing_deg;
 
-      // 1. Вектор вздовж ряду (дистанція в метрах)
+      // 1. Вектор вздовж ряду
       const radBearing = (bearing * Math.PI) / 180;
       const dNorth_dist = dist * Math.cos(radBearing);
       const dEast_dist = dist * Math.sin(radBearing);
 
-      // 2. Вектор міжряддя (розвернуто в протилежний бік: +90° замість -90°)
+      // 2. Вектор міжряддя
       const radPerp = ((bearing + 90) * Math.PI) / 180;
       const dNorth_offset = rowOffset * Math.cos(radPerp);
       const dEast_offset = rowOffset * Math.sin(radPerp);
 
-      // Підсумкове зміщення
       const dNorth = dNorth_dist + dNorth_offset;
       const dEast = dEast_dist + dEast_offset;
 
@@ -268,6 +235,7 @@
 
       return [lat, lon];
     }
+
     // 5. Маркери рослин
     const mainGroup = L.layerGroup().addTo(map);
     const houseGroup = L.layerGroup().addTo(map);
@@ -306,7 +274,7 @@
           <div class="popup-field"><span>Ділянка:</span> ${(item.plot || '').toUpperCase()}, Ряд ${item.row || ''}</div>
           <div class="popup-field"><span>Позиція:</span> <b>${item.distance_m || 0} м</b></div>
           ${item.rootstock ? `<div class="popup-field"><span>Підщепа:</span> ${item.rootstock}</div>` : ''}
-          ${item.planted_year ? `<div class="popup-field"><span>Рік:</span> ${item.planted_year}</div>` : ''}
+          ${item.planted_year ? `<div class="popup-field"><span>Рік висадки:</span> ${item.planted_year}</div>` : ''}
           ${item.notes ? `<div class="popup-field"><span>Нотатка:</span> ${item.notes}</div>` : ''}
           <div><span class="popup-badge" style="background:${cfg.color}22; color:${cfg.color};">${cfg.label}</span></div>
         </div>
@@ -334,11 +302,10 @@
       });
     }
 
-    // 6. Послідовна ініціалізація
+    // 6. Завантаження даних
     async function initGarden() {
       const statusEl = document.getElementById('loadStatus');
       try {
-        // Крок 1: Обов'язкове завантаження rows.csv
         const rowsData = await parseCSV('./Data/rows.csv');
         rowsData.forEach(r => {
           if (r.row_id && r.plot) {
@@ -350,9 +317,7 @@
             };
           }
         });
-        console.log('Завантажено конфігурацію rows.csv:', rowsConfig);
 
-        // Крок 2: Завантаження дерев
         const treesData = await parseCSV('./Data/trees.csv');
         const validRows = treesData.filter(r => r.tree_id && r.crop);
         validRows.forEach(addTreeMarker);
