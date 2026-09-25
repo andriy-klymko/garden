@@ -132,7 +132,7 @@
     <div class="status-row"><span class="status-dot" style="background:#d32f2f;"></span> Засохло</div>
     <div id="loadStatus"
       style="margin-top: 8px; font-size: 11px; color: #555; border-top: 1px dashed #ccc; padding-top: 6px;">
-      Завантаження насаджень...
+      Завантаження...
     </div>
   </div>
 
@@ -147,7 +147,6 @@
       maxZoom: 22
     });
 
-    // Підкладка Google Супутник
     const googleSat = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
       maxZoom: 22,
       subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
@@ -174,7 +173,7 @@
       [23.552623007, 50.175859531]
     ];
 
-    const parcelPolygon = L.polygon(rawCoords.map(p => [p[1], p[0]]), {
+    L.polygon(rawCoords.map(p => [p[1], p[0]]), {
       color: "#ffffff",
       weight: 2,
       dashArray: "4, 4",
@@ -182,54 +181,50 @@
       fillOpacity: 0.05
     }).addTo(map);
 
-    // 3. Зафіксовані опорні точки
+    // 3. Базові точки прив'язки
     const ORIGINS = {
-      house: { lat: 50.175792, lon: 23.554144 }, // Південний схід зони біля хати
-      main: { lat: 50.176099, lon: 23.553156 }  // Південний схід ділянки Main
+      house: { lat: 50.175792, lon: 23.554144 },
+      main: { lat: 50.176099, lon: 23.553156 }
     };
 
     const M_TO_LAT = 0.00000899;
     const M_TO_LON = 0.00001402;
 
-    // Кут орієнтації рядів на північний схід уздовж осі ділянки
-    const ROW_ANGLE_DEG = 26.0;
-    const ROW_SPACING_M = 3.5;  // крок між рядами в метрах
+    // Сховище конфігурації рядів
+    const rowsConfig = {};
 
-    const rad = (ROW_ANGLE_DEG * Math.PI) / 180;
-    const COS_A = Math.cos(rad);
-    const SIN_A = Math.sin(rad);
+    function normalizeRowId(rowStr) {
+      const s = String(rowStr).trim().toLowerCase();
+      if (s === 'h-r1' || s === 'm-r1' || s === '1') return '1';
+      if (s === 'h-r2' || s === 'm-r2' || s === '2') return '2';
+      if (s === 'm-r3' || s === '3') return '3';
+      if (s === 'm-r4' || s === '4') return '4';
+      if (s === 'm-r5' || s === '5') return '5';
+      if (s === 'm-r6' || s === '6') return '6';
+      if (s === 'm-r7' || s === '7') return '7';
+      if (s === 'h-g' || s === 'перед городом') return 'перед городом';
+      if (s === 'h-h' || s === 'біля хати') return 'біля хати';
+      return s;
+    }
 
-    // 4. Розрахунок позиції рослини
     function calculateTreeCoords(plot, row, dist) {
-      const isHouse = (plot === 'house');
+      const isHouse = (plot.toLowerCase() === 'house');
       const base = isHouse ? ORIGINS.house : ORIGINS.main;
-      let rowOffset = 0;
 
-      if (isHouse) {
-        if (row === '1' || row === 'H-R1') rowOffset = 0.0;
-        else if (row === '2' || row === 'H-R2') rowOffset = 3.5;
-        else if (row === 'перед городом' || row === 'H-G') rowOffset = 7.0;
-        else if (row === 'біля хати' || row === 'H-H') rowOffset = 11.5;
-        else {
-          const match = String(row).match(/\d+/);
-          rowOffset = match ? (parseInt(match[0]) - 1) * ROW_SPACING_M : 0;
-        }
-      } else {
-        // Ділянка Main: ряди 1..7
-        let rNum = 1;
-        if (typeof row === 'string') {
-          const match = row.match(/\d+/);
-          rNum = match ? parseInt(match[0]) : 1;
-        } else {
-          rNum = parseInt(row) || 1;
-        }
-        rowOffset = (rNum - 1) * ROW_SPACING_M;
-      }
+      const cleanRow = normalizeRowId(row);
+      const key = `${plot.toLowerCase()}_${cleanRow}`;
 
-      // Напрямок: dist відкладається на північний схід (+lat, +lon),
-      // а rowOffset зміщує ряди всередину ділянки
-      const dNorth = (dist * SIN_A) - (rowOffset * COS_A);
-      const dEast = (dist * COS_A) + (rowOffset * SIN_A);
+      const conf = rowsConfig[key] || { offset_m: 0.0, bearing_deg: 160.5 };
+      const rowOffset = conf.offset_m;
+      const bearing = conf.bearing_deg;
+
+      const rad = (bearing * Math.PI) / 180;
+      const cosA = Math.cos(rad);
+      const sinA = Math.sin(rad);
+
+      // dist вздовж ряду, rowOffset зміщує ряди вглиб ділянки
+      const dNorth = (dist * sinA) + (rowOffset * cosA);
+      const dEast = -(dist * cosA) + (rowOffset * sinA);
 
       const lat = base.lat + (dNorth * M_TO_LAT);
       const lon = base.lon + (dEast * M_TO_LON);
@@ -237,7 +232,7 @@
       return [lat, lon];
     }
 
-    // 5. Рендеринг маркерів
+    // 4. Маркери рослин
     const mainGroup = L.layerGroup().addTo(map);
     const houseGroup = L.layerGroup().addTo(map);
 
@@ -273,9 +268,9 @@
           <div class="popup-title">${item.crop || ''} ${item.variety ? `"${item.variety}"` : ''}</div>
           <div class="popup-field"><span>ID:</span> <b>${item.tree_id || ''}</b></div>
           <div class="popup-field"><span>Ділянка:</span> ${(item.plot || '').toUpperCase()}, Ряд ${item.row || ''}</div>
-          <div class="popup-field"><span>Позиція в ряду:</span> <b>${item.distance_m || 0} м</b></div>
+          <div class="popup-field"><span>Позиція:</span> <b>${item.distance_m || 0} м</b></div>
           ${item.rootstock ? `<div class="popup-field"><span>Підщепа:</span> ${item.rootstock}</div>` : ''}
-          ${item.planted_year ? `<div class="popup-field"><span>Рік висадки:</span> ${item.planted_year}</div>` : ''}
+          ${item.planted_year ? `<div class="popup-field"><span>Рік:</span> ${item.planted_year}</div>` : ''}
           ${item.notes ? `<div class="popup-field"><span>Нотатка:</span> ${item.notes}</div>` : ''}
           <div><span class="popup-badge" style="background:${cfg.color}22; color:${cfg.color};">${cfg.label}</span></div>
         </div>
@@ -284,60 +279,54 @@
       marker.bindPopup(popupContent);
       marker.bindTooltip(`${item.crop || ''} (${item.distance_m}м)`, { direction: 'top', offset: [0, -10] });
 
-      if (item.plot === 'house') {
+      if (item.plot.toLowerCase() === 'house') {
         houseGroup.addLayer(marker);
       } else {
         mainGroup.addLayer(marker);
       }
     }
 
-    // 6. Завантаження даних із папки Data/trees.csv
-    async function loadTreeData() {
+    // 5. Завантаження даних
+    async function initGarden() {
       const statusEl = document.getElementById('loadStatus');
-
-      const pathsToTry = [
-        './Data/trees.csv',
-        'Data/trees.csv',
-        './trees.csv'
-      ];
-
-      let csvText = null;
-
-      for (const p of pathsToTry) {
-        try {
-          const res = await fetch(p + '?t=' + Date.now());
-          if (res.ok) {
-            csvText = await res.text();
-            break;
-          }
-        } catch (e) {
-          // пробуємо наступний шлях
+      try {
+        // Завантаження rows.csv
+        const rowsRes = await fetch('./Data/rows.csv?t=' + Date.now());
+        if (rowsRes.ok) {
+          const rowsText = await rowsRes.text();
+          const parsedRows = Papa.parse(rowsText, { header: true, skipEmptyLines: true });
+          parsedRows.data.forEach(r => {
+            if (r.row_id && r.plot) {
+              const cleanRow = normalizeRowId(r.row_id);
+              const key = `${r.plot.trim().toLowerCase()}_${cleanRow}`;
+              rowsConfig[key] = {
+                offset_m: parseFloat(r.offset_m) || 0.0,
+                bearing_deg: parseFloat(r.bearing_deg) || 160.5
+              };
+            }
+          });
         }
-      }
 
-      if (!csvText) {
-        statusEl.innerHTML = `<span style="color:#d32f2f;">Не знайдено файл Data/trees.csv</span>`;
-        return;
-      }
+        // Завантаження trees.csv
+        const treesRes = await fetch('./Data/trees.csv?t=' + Date.now());
+        if (!treesRes.ok) throw new Error('Не знайдено Data/trees.csv');
+        const treesText = await treesRes.text();
 
-      Papa.parse(csvText, {
-        header: true,
-        skipEmptyLines: true,
-        complete: function (res) {
-          const validRows = res.data.filter(r => r.tree_id && r.crop);
-          if (validRows.length === 0) {
-            statusEl.innerText = 'Файл порожній або некоректний';
-            return;
-          }
-          validRows.forEach(addTreeMarker);
-          statusEl.innerHTML = `Відображено рослин: <b>${validRows.length}</b>`;
-        }
-      });
+        const parsedTrees = Papa.parse(treesText, { header: true, skipEmptyLines: true });
+        const validRows = parsedTrees.data.filter(r => r.tree_id && r.crop);
+        validRows.forEach(addTreeMarker);
+
+        statusEl.innerHTML = `Відображено рослин: <b>${validRows.length}</b>`;
+
+      } catch (err) {
+        console.error(err);
+        statusEl.innerHTML = `<span style="color:#d32f2f;">Помилка завантаження даних</span>`;
+      }
     }
 
-    loadTreeData();
+    initGarden();
 
-    // 7. Контрол вибору шарів
+    // 6. Контрол вибору шарів
     L.control.layers({ "Google Супутник": googleSat, "OpenStreetMap": osm }, {
       "Основний сад (Main)": mainGroup,
       "Біля хати (House)": houseGroup
