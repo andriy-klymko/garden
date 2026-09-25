@@ -4,9 +4,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Карта саду | Потелич</title>
+  <title>Інтерактивна карта саду | с. Потелич</title>
 
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
 
   <style>
     * {
@@ -25,30 +25,31 @@
     #map {
       height: 100vh;
       width: 100vw;
-      background: #222;
+      background: #1a1a1a;
     }
 
     /* Панель легенди */
     .legend-panel {
       position: absolute;
-      top: 12px;
-      right: 12px;
+      top: 14px;
+      right: 14px;
       z-index: 1000;
-      background: rgba(255, 255, 255, 0.95);
+      background: rgba(255, 255, 255, 0.96);
       backdrop-filter: blur(4px);
       padding: 14px 18px;
       border-radius: 8px;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25);
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3);
       font-size: 13px;
       min-width: 220px;
     }
 
     .legend-title {
-      font-weight: bold;
+      font-weight: 700;
       margin-bottom: 8px;
       font-size: 14px;
       border-bottom: 1px solid #ddd;
-      padding-bottom: 4px;
+      padding-bottom: 5px;
+      color: #222;
     }
 
     .status-row {
@@ -63,17 +64,17 @@
       height: 12px;
       border-radius: 50%;
       border: 1.5px solid #fff;
-      box-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
     }
 
-    /* Маркери дерев */
+    /* Маркери рослин */
     .tree-icon {
       display: flex;
       align-items: center;
       justify-content: center;
       border-radius: 50%;
       border: 2px solid #ffffff;
-      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.6);
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.65);
       color: #fff;
       font-size: 11px;
       font-weight: bold;
@@ -86,21 +87,22 @@
       z-index: 1000 !important;
     }
 
-    /* Спливаюча картка рослини */
+    /* Спливаючий блок інформації (Popup) */
     .popup-box {
       font-size: 13px;
-      min-width: 190px;
+      min-width: 200px;
+      line-height: 1.45;
     }
 
     .popup-title {
       font-size: 15px;
       font-weight: 700;
       color: #1b5e20;
-      margin-bottom: 4px;
+      margin-bottom: 6px;
     }
 
     .popup-field {
-      margin-bottom: 2px;
+      margin-bottom: 3px;
     }
 
     .popup-field span {
@@ -109,11 +111,11 @@
 
     .popup-badge {
       display: inline-block;
-      padding: 2px 6px;
+      padding: 2px 7px;
       border-radius: 4px;
       font-size: 11px;
       font-weight: 600;
-      margin-top: 5px;
+      margin-top: 6px;
     }
   </style>
 </head>
@@ -130,11 +132,11 @@
     <div class="status-row"><span class="status-dot" style="background:#d32f2f;"></span> Засохло</div>
     <div id="loadStatus"
       style="margin-top: 8px; font-size: 11px; color: #555; border-top: 1px dashed #ccc; padding-top: 6px;">
-      Завантаження даних...
+      Завантаження насаджень...
     </div>
   </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
   <script>
@@ -157,7 +159,7 @@
       attribution: '&copy; OpenStreetMap'
     });
 
-    // 2. Межі ділянки (GeoJSON)
+    // 2. Межі кадастрової ділянки
     const rawCoords = [
       [23.552623007, 50.175859531],
       [23.552169358, 50.176035001],
@@ -180,19 +182,19 @@
       fillOpacity: 0.05
     }).addTo(map);
 
-    // 3. Зафіксовані базові точки відліку
+    // 3. Зафіксовані опорні точки
     const ORIGINS = {
-      house: { lat: 50.175792, lon: 23.554144 }, // Південний схід зони біля хати
-      main: { lat: 50.176099, lon: 23.553156 }  // Південний схід ділянки Main
+      house: { lat: 50.175792, lon: 23.554144 },
+      main: { lat: 50.176099, lon: 23.553156 }
     };
 
     const M_TO_LAT = 0.00000899;
     const M_TO_LON = 0.00001402;
     const COS_BEARING = 0.978;
     const SIN_BEARING = 0.207;
-    const ROW_SPACING_M = 3.5; // крок між рядами 3.5 м
+    const ROW_SPACING_M = 3.5;
 
-    // 4. Розрахунок геопозиції
+    // 4. Розрахунок позиції рослини
     function calculateTreeCoords(plot, row, dist) {
       const isHouse = (plot === 'house');
       const base = isHouse ? ORIGINS.house : ORIGINS.main;
@@ -208,7 +210,6 @@
           rowOffsetMeters = match ? (parseInt(match[0]) - 1) * ROW_SPACING_M : 0;
         }
       } else {
-        // Ділянка Main: ряди 1..7 (зсув всередину контуру)
         let rNum = 1;
         if (typeof row === 'string') {
           const match = row.match(/\d+/);
@@ -219,7 +220,7 @@
         rowOffsetMeters = (rNum - 1) * ROW_SPACING_M;
       }
 
-      // Відхилення: ряди йдуть на захід (-lon), зміщення рядів — всередину ділянки
+      // Відкладання метрів: дистанція на захід (-lon), ряди всередину ділянки
       const dNorth = -(rowOffsetMeters * COS_BEARING) + (dist * SIN_BEARING);
       const dWest = (dist * COS_BEARING) + (rowOffsetMeters * SIN_BEARING);
 
@@ -229,7 +230,7 @@
       return [lat, lon];
     }
 
-    // 5. Маркери на карті
+    // 5. Рендеринг маркерів
     const mainGroup = L.layerGroup().addTo(map);
     const houseGroup = L.layerGroup().addTo(map);
 
@@ -265,9 +266,9 @@
           <div class="popup-title">${item.crop || ''} ${item.variety ? `"${item.variety}"` : ''}</div>
           <div class="popup-field"><span>ID:</span> <b>${item.tree_id || ''}</b></div>
           <div class="popup-field"><span>Ділянка:</span> ${(item.plot || '').toUpperCase()}, Ряд ${item.row || ''}</div>
-          <div class="popup-field"><span>Позиція:</span> <b>${item.distance_m || 0} м</b></div>
+          <div class="popup-field"><span>Позиція в ряду:</span> <b>${item.distance_m || 0} м</b></div>
           ${item.rootstock ? `<div class="popup-field"><span>Підщепа:</span> ${item.rootstock}</div>` : ''}
-          ${item.planted_year ? `<div class="popup-field"><span>Рік:</span> ${item.planted_year}</div>` : ''}
+          ${item.planted_year ? `<div class="popup-field"><span>Рік висадки:</span> ${item.planted_year}</div>` : ''}
           ${item.notes ? `<div class="popup-field"><span>Нотатка:</span> ${item.notes}</div>` : ''}
           <div><span class="popup-badge" style="background:${cfg.color}22; color:${cfg.color};">${cfg.label}</span></div>
         </div>
@@ -283,34 +284,48 @@
       }
     }
 
-    // 6. Надійне завантаження trees.csv через Fetch API
+    // 6. Завантаження даних прямо з папки Data/trees.csv
     async function loadTreeData() {
       const statusEl = document.getElementById('loadStatus');
-      try {
-        // Додаємо timestamp, щоб обійти кеш GitHub Pages
-        const response = await fetch('./trees.csv?t=' + new Date().getTime());
-        if (!response.ok) {
-          throw new Error(`HTTP помилка ${response.status}: файл trees.csv не знайдено`);
-        }
-        const csvText = await response.text();
 
-        Papa.parse(csvText, {
-          header: true,
-          skipEmptyLines: true,
-          complete: function (res) {
-            const validRows = res.data.filter(r => r.tree_id && r.crop);
-            if (validRows.length === 0) {
-              statusEl.innerText = 'Файл порожній або некоректний';
-              return;
-            }
-            validRows.forEach(addTreeMarker);
-            statusEl.innerText = `Відображено рослин: ${validRows.length}`;
+      const pathsToTry = [
+        './Data/trees.csv',
+        'Data/trees.csv',
+        './trees.csv'
+      ];
+
+      let csvText = null;
+
+      for (const p of pathsToTry) {
+        try {
+          const res = await fetch(p + '?t=' + Date.now());
+          if (res.ok) {
+            csvText = await res.text();
+            break;
           }
-        });
-      } catch (err) {
-        console.error(err);
-        statusEl.innerHTML = `<span style="color:#d32f2f;">Помилка: перевірте наявність trees.csv у репозиторії</span>`;
+        } catch (e) {
+          // пробуємо наступний варіант
+        }
       }
+
+      if (!csvText) {
+        statusEl.innerHTML = `<span style="color:#d32f2f;">Не знайдено файл Data/trees.csv</span>`;
+        return;
+      }
+
+      Papa.parse(csvText, {
+        header: true,
+        skipEmptyLines: true,
+        complete: function (res) {
+          const validRows = res.data.filter(r => r.tree_id && r.crop);
+          if (validRows.length === 0) {
+            statusEl.innerText = 'Файл порожній або некоректний';
+            return;
+          }
+          validRows.forEach(addTreeMarker);
+          statusEl.innerHTML = `Відображено рослин: <b>${validRows.length}</b>`;
+        }
+      });
     }
 
     loadTreeData();
