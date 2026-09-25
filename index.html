@@ -244,20 +244,22 @@
       const cleanRow = normalizeRowId(row);
       const key = `${plot.toLowerCase()}_${cleanRow}`;
 
+      // Беремо параметри суворо з rows.csv
       const conf = rowsConfig[key] || { offset_m: 0.0, bearing_deg: 298.0 };
       const rowOffset = conf.offset_m;
       const bearing = conf.bearing_deg;
 
-      // Радіани азимута ряду (вздовж ділянки на північний захід)
+      // 1. Вектор вздовж ряду (дистанція в метрах)
       const radBearing = (bearing * Math.PI) / 180;
       const dNorth_dist = dist * Math.cos(radBearing);
       const dEast_dist = dist * Math.sin(radBearing);
 
-      // Вектор зміщення міжрядь: повертаємо на -90° (вгору і праворуч углиб галявини)
-      const radPerp = ((bearing - 90) * Math.PI) / 180;
+      // 2. Вектор міжряддя (розвернуто в протилежний бік: +90° замість -90°)
+      const radPerp = ((bearing + 90) * Math.PI) / 180;
       const dNorth_offset = rowOffset * Math.cos(radPerp);
       const dEast_offset = rowOffset * Math.sin(radPerp);
 
+      // Підсумкове зміщення
       const dNorth = dNorth_dist + dNorth_offset;
       const dEast = dEast_dist + dEast_offset;
 
